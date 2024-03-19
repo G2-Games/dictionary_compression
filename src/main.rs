@@ -1,8 +1,11 @@
 use std::{
-    collections::BTreeMap,
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Write, Read}, time::Instant, env
+    io::{BufRead, BufReader, BufWriter, Write, Read},
+    time::Instant,
+    env,
 };
+
+use ahash::AHashMap;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -44,7 +47,7 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
     }
 
     pub fn compress(&mut self) -> usize {
-        let mut dict: BTreeMap<Vec<u8>, u64> = BTreeMap::new();
+        let mut dict: AHashMap<Vec<u8>, u64> = AHashMap::new();
         let mut file_chunk = Vec::new();
         let mut total_length = 0;
         let mut total_compressed = 0;
@@ -52,15 +55,18 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
         while !stop {
             let length = self.input.read_until(0x20, &mut file_chunk).unwrap();
             if length == 0 {
+                println!("{:X?}", file_chunk);
+                self.output.write_all(&file_chunk).unwrap();
                 stop = true;
                 continue;
             }
             total_length += length;
 
-            //dict.retain(|_, x| *x - 20000 > total_length as u64);
+            //dict.retain(|_, x| *x - 100_000 > total_length as u64);
 
-            if length < 2 {
+            if length < 3 {
                 self.output.write_all(&file_chunk).unwrap();
+                total_compressed += file_chunk.len();
                 file_chunk.clear();
                 continue;
             }
@@ -78,9 +84,9 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
                 total_compressed += &vint.0[..vint.1 as usize].len() + 1;
             }
             file_chunk.clear();
-            self.output.flush().unwrap();
         }
 
+        self.output.flush().unwrap();
         total_compressed
     }
 }
@@ -106,22 +112,26 @@ impl<R: Read, W: Write> G2zReader<R, W> {
         while !stop {
             let length = self.input.read_until(0xFF, &mut file_chunk).unwrap();
             if length == 0 {
+                println!("{:X?}", file_chunk);
                 stop = true;
+                if !file_chunk.is_empty() {
+                    self.output.write_all(&file_chunk).unwrap();
+                }
                 continue;
             }
 
-            file_chunk.pop().unwrap();
+            let discard = file_chunk.pop().unwrap();
             if total_length > 0 {
                 let varint = match varint_simd::decode::<u64>(file_chunk.as_slice()) {
                     Ok(num) => num,
                     Err(_) => {
-                        file_chunk.push(0xFF);
+                        file_chunk.push(discard);
                         continue;
                     }
                 };
 
                 if varint.1 > file_chunk.len() {
-                    file_chunk.push(0xFF);
+                    file_chunk.push(discard);
                     continue;
                 }
 
@@ -150,8 +160,8 @@ impl<R: Read, W: Write> G2zReader<R, W> {
                 total_length += file_chunk.len();
                 total_file.append(&mut file_chunk);
             }
-            self.output.flush().unwrap();
         }
+        self.output.flush().unwrap();
         total_length
     }
 }
