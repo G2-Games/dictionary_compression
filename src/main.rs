@@ -1,21 +1,33 @@
 use std::{
     collections::BTreeMap,
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Write, Read}
+    io::{BufRead, BufReader, BufWriter, Write, Read}, time::Instant, env
 };
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let input_file = File::open(&args[1]).unwrap();
+    let input_size = File::metadata(&input_file).unwrap().len();
     let mut g2_compress = G2zWriter::new(
-        File::open("big.txt").unwrap(),
-        File::create("big.txt.g2z").unwrap()
+        input_file,
+        File::create(format!("{}.g2z", &args[1])).unwrap()
     );
-    dbg!(g2_compress.compress());
+    let now = Instant::now();
+    let compressed_size = g2_compress.compress();
+    println!(
+        "{}ms / {input_size} to {compressed_size} bytes / {:0.2}%",
+        now.elapsed().as_millis(),
+        ((compressed_size as f32 / input_size as f32) * 100.0)
+    );
 
     let mut g2_decompress = G2zReader::new(
-        File::open("big.txt.g2z").unwrap(),
-        File::create("big.txt.re").unwrap()
+        File::open(format!("{}.g2z", &args[1])).unwrap(),
+        File::create(format!("{}.re", &args[1])).unwrap()
     );
-    dbg!(g2_decompress.decompress());
+    let now = Instant::now();
+    g2_decompress.decompress();
+    println!("{}ms to decompress", now.elapsed().as_millis());
 }
 
 struct G2zWriter<R: Read, W: Write> {
@@ -44,6 +56,8 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
                 continue;
             }
             total_length += length;
+
+            //dict.retain(|_, x| *x - 20000 > total_length as u64);
 
             if length < 2 {
                 self.output.write_all(&file_chunk).unwrap();
