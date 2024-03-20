@@ -3,9 +3,9 @@ use std::{
     io::{BufRead, BufReader, BufWriter, Write, Read},
     time::Instant,
     env,
+    collections::HashMap,
+    hash::BuildHasherDefault,
 };
-
-use ahash::AHashMap;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -47,7 +47,7 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
     }
 
     pub fn compress(&mut self) -> usize {
-        let mut dict: AHashMap<Vec<u8>, usize> = AHashMap::new();
+        let mut dict = HashMap::<u64, usize, BuildHasherDefault<fasthash::SeaHasher>>::default();
         let mut file_chunk = Vec::new();
         let mut total_length = 0;
         let mut total_compressed = 0;
@@ -68,16 +68,14 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
                 continue;
             }
 
-            if file_chunk.contains(&0xFF) {
-                panic!("Can't compress files which are not strictly ASCII!");
-            }
-
-            if !dict.contains_key(&file_chunk) {
-                dict.insert(file_chunk.clone(), total_length - length);
+            let chunk_hash = fasthash::xx::hash64(&file_chunk);
+            let val = dict.get(&chunk_hash);
+            if val.is_none() {
+                dict.insert(chunk_hash, total_length - length);
                 self.output.write_all(&file_chunk).unwrap();
                 total_compressed += length;
             } else {
-                let pos = dict.get(&file_chunk).unwrap();
+                let pos = val.unwrap();
                 let vint = varint_simd::encode(*pos as u64);
 
                 self.output.write_all(&[0xFF]).unwrap();
