@@ -47,7 +47,7 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
     }
 
     pub fn compress(&mut self) -> usize {
-        let mut dict: AHashMap<Vec<u8>, u64> = AHashMap::new();
+        let mut dict: AHashMap<Vec<u8>, usize> = AHashMap::new();
         let mut file_chunk = Vec::new();
         let mut total_length = 0;
         let mut total_compressed = 0;
@@ -55,14 +55,11 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
         while !stop {
             let length = self.input.read_until(0x20, &mut file_chunk).unwrap();
             if length == 0 {
-                println!("{:X?}", file_chunk);
                 self.output.write_all(&file_chunk).unwrap();
                 stop = true;
                 continue;
             }
             total_length += length;
-
-            //dict.retain(|_, x| *x - 100_000 > total_length as u64);
 
             if length < 3 {
                 self.output.write_all(&file_chunk).unwrap();
@@ -71,13 +68,17 @@ impl<R: Read, W: Write> G2zWriter<R, W> {
                 continue;
             }
 
+            if file_chunk.contains(&0xFF) {
+                panic!("Can't compress files which are not strictly ASCII!");
+            }
+
             if !dict.contains_key(&file_chunk) {
-                dict.insert(file_chunk.clone(), total_length as u64 - length as u64);
+                dict.insert(file_chunk.clone(), total_length - length);
                 self.output.write_all(&file_chunk).unwrap();
                 total_compressed += length;
             } else {
                 let pos = dict.get(&file_chunk).unwrap();
-                let vint = varint_simd::encode(*pos);
+                let vint = varint_simd::encode(*pos as u64);
 
                 self.output.write_all(&[0xFF]).unwrap();
                 self.output.write_all(&vint.0[..vint.1 as usize]).unwrap();
@@ -120,18 +121,20 @@ impl<R: Read, W: Write> G2zReader<R, W> {
                 continue;
             }
 
-            let discard = file_chunk.pop().unwrap();
+            if *file_chunk.last().unwrap() == 0xFF {
+                file_chunk.pop().unwrap();
+            }
             if total_length > 0 {
                 let varint = match varint_simd::decode::<u64>(file_chunk.as_slice()) {
                     Ok(num) => num,
                     Err(_) => {
-                        file_chunk.push(discard);
+                        file_chunk.push(0xFF);
                         continue;
                     }
                 };
 
                 if varint.1 > file_chunk.len() {
-                    file_chunk.push(discard);
+                    file_chunk.push(0xFF);
                     continue;
                 }
 

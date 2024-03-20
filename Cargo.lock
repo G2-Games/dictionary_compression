@@ -27,7 +27,6 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "varint-simd",
- "varuint",
 ]
 
 [[package]]
@@ -166,12 +165,6 @@ checksum = "9d6b8d2277e06002f0de053fbf74b796b64ba133a00d7b4a700202013f1d5a94"
 dependencies = [
  "rustc_version",
 ]
-
-[[package]]
-name = "varuint"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa87b6bf001aaee248041a8fd176b6ed105b5ff78a8d13b4aa2f644660b3031d"
 
 [[package]]
 name = "version_check"
